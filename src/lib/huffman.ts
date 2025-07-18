@@ -277,8 +277,8 @@ export class HuffmanCompressor {
       
       for (let bit = 7; bit >= 0; bit--) {
         // Skip padding bits in last byte
-        if (i === compressedPayload.length - 1 && bit < padding) {
-          continue;
+        if (i === compressedPayload.length - 1 && bitCount >= (8 - padding)) {
+          break;
         }
         
         const bitValue = (byte >> bit) & 1;

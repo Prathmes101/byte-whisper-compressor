@@ -14,9 +14,7 @@ interface FileUploadProps {
 export function FileUpload({ 
   onFileSelect, 
   className, 
-  accept = {
-    '*/*': []
-  },
+  accept,
   maxSize = 100 * 1024 * 1024 // 100MB default
 }: FileUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

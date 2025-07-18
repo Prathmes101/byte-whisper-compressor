@@ -123,8 +123,7 @@ export function DecompressionInterface() {
           <FileUpload 
             onFileSelect={handleFileSelect}
             accept={{
-              'application/octet-stream': ['.hzip'],
-              '*/*': []
+              'application/octet-stream': ['.hzip']
             }}
             maxSize={50 * 1024 * 1024} // 50MB limit
           />

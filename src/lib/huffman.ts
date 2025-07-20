@@ -1,13 +1,34 @@
 /**
  * Huffman Compression Algorithm Implementation
- * Translated from the C++ implementation to TypeScript
+ * Using Min Heap data structure for optimal tree construction
  */
 
 export interface HuffmanNode {
   character?: number;
-  count: number;
-  left?: HuffmanNode;
-  right?: HuffmanNode;
+  freq: number;
+  l?: HuffmanNode;
+  r?: HuffmanNode;
+}
+
+class Node {
+  constructor(public character: number | undefined, public freq: number) {
+    this.character = character;
+    this.freq = freq;
+    this.l = null;
+    this.r = null;
+  }
+  
+  l: HuffmanNode | null = null;
+  r: HuffmanNode | null = null;
+}
+
+class Min_Heap {
+  constructor(public size: number) {
+    this.size = size;
+    this.array = Array(size).fill(null);
+  }
+  
+  array: HuffmanNode[];
 }
 
 export interface CompressionResult {
@@ -44,54 +65,114 @@ export class HuffmanCompressor {
   /**
    * Create Huffman node
    */
-  private createNode(character?: number, count: number = 0): HuffmanNode {
-    return { character, count };
+  private createNode(character?: number, freq: number = 0): HuffmanNode {
+    return { character, freq };
   }
 
   /**
-   * Combine two nodes into a parent node
+   * Heapify function for min heap
    */
-  private combine(a: HuffmanNode, b: HuffmanNode): HuffmanNode {
-    const parent = this.createNode(undefined, a.count + b.count);
-    parent.left = b;
-    parent.right = a;
-    return parent;
+  private Heapify(minHeap: Min_Heap, idx: number): void {
+    let smallest = idx;
+    const left = 2 * idx + 1;
+    const right = 2 * idx + 2;
+
+    if (left < minHeap.size && minHeap.array[left].freq < minHeap.array[smallest].freq) {
+      smallest = left;
+    }
+
+    if (right < minHeap.size && minHeap.array[right].freq < minHeap.array[smallest].freq) {
+      smallest = right;
+    }
+
+    if (smallest !== idx) {
+      [minHeap.array[smallest], minHeap.array[idx]] = [minHeap.array[idx], minHeap.array[smallest]];
+      this.Heapify(minHeap, smallest);
+    }
   }
 
   /**
-   * Generate Huffman tree from frequency map
+   * Extract minimum node from heap
+   */
+  private extractMin(minHeap: Min_Heap): HuffmanNode {
+    const temp = minHeap.array[0];
+    minHeap.array[0] = minHeap.array[minHeap.size - 1];
+    --minHeap.size;
+    this.Heapify(minHeap, 0);
+    return temp;
+  }
+
+  /**
+   * Insert node into heap
+   */
+  private insertMinHeap(minHeap: Min_Heap, node: HuffmanNode): void {
+    ++minHeap.size;
+    let i = minHeap.size - 1;
+
+    while (i && node.freq < minHeap.array[Math.floor((i - 1) / 2)].freq) {
+      minHeap.array[i] = minHeap.array[Math.floor((i - 1) / 2)];
+      i = Math.floor((i - 1) / 2);
+    }
+
+    minHeap.array[i] = node;
+  }
+
+  /**
+   * Create and build min heap
+   */
+  private createAndBuildMin_Heap(arr: number[], freq: number[], unique_size: number): Min_Heap {
+    const minHeap = new Min_Heap(unique_size);
+
+    for (let i = 0; i < unique_size; i++) {
+      minHeap.array[i] = new Node(arr[i], freq[i]);
+    }
+
+    const n = minHeap.size - 1;
+    for (let i = Math.floor((n - 1) / 2); i >= 0; i--) {
+      this.Heapify(minHeap, i);
+    }
+
+    return minHeap;
+  }
+
+  /**
+   * Generate Huffman tree using min heap
    */
   private generateHuffmanTree(frequencies: Map<number, number>): HuffmanNode {
-    const nodes: HuffmanNode[] = [];
+    const chars: number[] = [];
+    const freqs: number[] = [];
     
-    // Create leaf nodes for each character
-    for (const [character, count] of frequencies) {
-      nodes.push(this.createNode(character, count));
+    // Convert frequency map to arrays
+    for (const [character, freq] of frequencies) {
+      chars.push(character);
+      freqs.push(freq);
     }
-    
-    // Sort by count (ascending)
-    nodes.sort((a, b) => a.count - b.count);
-    
+
+    const unique_size = chars.length;
+
     // Handle single character case
-    if (nodes.length === 1) {
-      return this.combine(nodes[0], this.createNode(undefined, 0));
+    if (unique_size === 1) {
+      const root = this.createNode(undefined, freqs[0]);
+      root.l = this.createNode(chars[0], freqs[0]);
+      return root;
     }
-    
-    // Build tree bottom-up
-    while (nodes.length > 1) {
-      const left = nodes.shift()!;
-      const right = nodes.shift()!;
-      const parent = this.combine(right, left);
-      
-      // Insert parent in sorted order
-      let insertIndex = 0;
-      while (insertIndex < nodes.length && nodes[insertIndex].count < parent.count) {
-        insertIndex++;
-      }
-      nodes.splice(insertIndex, 0, parent);
+
+    // Create and build min heap
+    const minHeap = this.createAndBuildMin_Heap(chars, freqs, unique_size);
+
+    // Build Huffman tree
+    while (minHeap.size > 1) {
+      const left = this.extractMin(minHeap);
+      const right = this.extractMin(minHeap);
+
+      const merged = this.createNode(undefined, left.freq + right.freq);
+      merged.l = left;
+      merged.r = right;
+
+      this.insertMinHeap(minHeap, merged);
     }
-    
-    return nodes[0];
+
+    return this.extractMin(minHeap);
   }
 
   /**
@@ -107,11 +188,11 @@ export class HuffmanCompressor {
     }
     
     // Traverse left with "0", right with "1"
-    if (root.left) {
-      this.generateCodes(root.left, code + "0");
+    if (root.l) {
+      this.generateCodes(root.l, code + "0");
     }
-    if (root.right) {
-      this.generateCodes(root.right, code + "1");
+    if (root.r) {
+      this.generateCodes(root.r, code + "1");
     }
   }
 
@@ -174,7 +255,7 @@ export class HuffmanCompressor {
     // Step 1: Count frequencies
     const frequencies = this.parseFrequencies(data);
     
-    // Step 2: Build Huffman tree
+    // Step 2: Build Huffman tree using min heap
     const root = this.generateHuffmanTree(frequencies);
     
     // Step 3: Generate codes
@@ -257,7 +338,7 @@ export class HuffmanCompressor {
     const uniqueCharCount = compressedData[offset++];
     
     // Rebuild Huffman tree
-    const root: HuffmanNode = { count: 0 };
+    const root: HuffmanNode = { freq: 0 };
     
     for (let i = 0; i < uniqueCharCount; i++) {
       const character = compressedData[offset++];
@@ -279,15 +360,15 @@ export class HuffmanCompressor {
       let current = root;
       for (let j = 0; j < code.length; j++) {
         if (code[j] === '0') {
-          if (!current.left) {
-            current.left = { count: 0 };
+          if (!current.l) {
+            current.l = { freq: 0 };
           }
-          current = current.left;
+          current = current.l;
         } else {
-          if (!current.right) {
-            current.right = { count: 0 };
+          if (!current.r) {
+            current.r = { freq: 0 };
           }
-          current = current.right;
+          current = current.r;
         }
       }
       current.character = character;
@@ -313,7 +394,7 @@ export class HuffmanCompressor {
         }
         
         const bitValue = (byte >> bit) & 1;
-        current = bitValue === 0 ? current.left! : current.right!;
+        current = bitValue === 0 ? current.l! : current.r!;
         
         if (current.character !== undefined) {
           decompressed.push(current.character);

@@ -116,22 +116,41 @@ export class HuffmanCompressor {
   }
 
   /**
-   * Generate header containing Huffman codes
+   * Generate header containing Huffman codes (optimized format)
    */
-  private generateHeader(padding: number): Uint8Array {
+  private generateHeader(padding: number, originalSize: number): Uint8Array {
     const headerParts: number[] = [];
     
-    // Number of unique characters (0-255 represents 1-256)
-    headerParts.push(this.huffmanCodes.size - 1);
+    // Original file size (4 bytes)
+    headerParts.push((originalSize >>> 24) & 0xFF);
+    headerParts.push((originalSize >>> 16) & 0xFF);
+    headerParts.push((originalSize >>> 8) & 0xFF);
+    headerParts.push(originalSize & 0xFF);
     
-    // For each character: character byte + code length + code
+    // Number of unique characters
+    headerParts.push(this.huffmanCodes.size);
+    
+    // For each character: character byte + code length + packed code bits
     for (const [character, code] of this.huffmanCodes) {
       headerParts.push(character);
       headerParts.push(code.length);
       
-      // Convert code string to bytes
+      // Pack code bits into bytes
+      const codeBytes = Math.ceil(code.length / 8);
+      let bitPos = 0;
+      let currentByte = 0;
+      
       for (let i = 0; i < code.length; i++) {
-        headerParts.push(code.charCodeAt(i));
+        if (code[i] === '1') {
+          currentByte |= (1 << (7 - bitPos));
+        }
+        bitPos++;
+        
+        if (bitPos === 8 || i === code.length - 1) {
+          headerParts.push(currentByte);
+          currentByte = 0;
+          bitPos = 0;
+        }
       }
     }
     
@@ -172,7 +191,7 @@ export class HuffmanCompressor {
     const compressedBytes = Math.ceil(totalBits / 8);
     
     // Step 5: Generate header
-    const header = this.generateHeader(padding);
+    const header = this.generateHeader(padding, data.length);
     
     // Step 6: Compress data
     const compressed = new Uint8Array(compressedBytes);
@@ -227,9 +246,15 @@ export class HuffmanCompressor {
 
     let offset = 0;
     
-    // Read header
-    const uniqueCharCount = compressedData[offset] + 1;
-    offset++;
+    // Read original file size (4 bytes)
+    const originalSize = (compressedData[offset] << 24) | 
+                        (compressedData[offset + 1] << 16) | 
+                        (compressedData[offset + 2] << 8) | 
+                        compressedData[offset + 3];
+    offset += 4;
+    
+    // Read number of unique characters
+    const uniqueCharCount = compressedData[offset++];
     
     // Rebuild Huffman tree
     const root: HuffmanNode = { count: 0 };
@@ -238,10 +263,16 @@ export class HuffmanCompressor {
       const character = compressedData[offset++];
       const codeLength = compressedData[offset++];
       
-      // Read code
+      // Read packed code bits
+      const codeBytes = Math.ceil(codeLength / 8);
       let code = "";
-      for (let j = 0; j < codeLength; j++) {
-        code += String.fromCharCode(compressedData[offset++]);
+      let bitPos = 0;
+      
+      for (let byteIdx = 0; byteIdx < codeBytes; byteIdx++) {
+        const codeByte = compressedData[offset++];
+        for (let bit = 7; bit >= 0 && code.length < codeLength; bit--) {
+          code += ((codeByte >> bit) & 1) ? '1' : '0';
+        }
       }
       
       // Build tree path for this character
@@ -296,7 +327,7 @@ export class HuffmanCompressor {
     
     return {
       decompressedData: new Uint8Array(decompressed),
-      originalSize: decompressed.length
+      originalSize: originalSize
     };
   }
 }

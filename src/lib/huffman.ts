@@ -197,10 +197,13 @@ export class HuffmanCompressor {
   }
 
   /**
-   * Generate header containing Huffman codes (optimized format)
+   * Generate header containing Huffman codes (simple format)
    */
   private generateHeader(padding: number, originalSize: number): Uint8Array {
     const headerParts: number[] = [];
+    
+    // Header marker (2 bytes: 0xHF, 0xFM)
+    headerParts.push(0x48, 0x46); // "HF" marker
     
     // Original file size (4 bytes)
     headerParts.push((originalSize >>> 24) & 0xFF);
@@ -208,34 +211,29 @@ export class HuffmanCompressor {
     headerParts.push((originalSize >>> 8) & 0xFF);
     headerParts.push(originalSize & 0xFF);
     
-    // Number of unique characters
-    headerParts.push(this.huffmanCodes.size);
+    // Number of unique characters (2 bytes for larger files)
+    const codeCount = this.huffmanCodes.size;
+    headerParts.push((codeCount >>> 8) & 0xFF);
+    headerParts.push(codeCount & 0xFF);
     
-    // For each character: character byte + code length + packed code bits
+    // Store codes in simple format: char(1) + length(1) + code_bits
     for (const [character, code] of this.huffmanCodes) {
       headerParts.push(character);
       headerParts.push(code.length);
       
-      // Pack code bits into bytes
-      const codeBytes = Math.ceil(code.length / 8);
-      let bitPos = 0;
-      let currentByte = 0;
-      
-      for (let i = 0; i < code.length; i++) {
-        if (code[i] === '1') {
-          currentByte |= (1 << (7 - bitPos));
+      // Store code as bytes (8 bits per byte)
+      for (let i = 0; i < code.length; i += 8) {
+        let byte = 0;
+        for (let j = 0; j < 8 && i + j < code.length; j++) {
+          if (code[i + j] === '1') {
+            byte |= (1 << (7 - j));
+          }
         }
-        bitPos++;
-        
-        if (bitPos === 8 || i === code.length - 1) {
-          headerParts.push(currentByte);
-          currentByte = 0;
-          bitPos = 0;
-        }
+        headerParts.push(byte);
       }
     }
     
-    // Add padding info
+    // Padding bits (1 byte)
     headerParts.push(padding);
     
     return new Uint8Array(headerParts);
@@ -321,11 +319,17 @@ export class HuffmanCompressor {
    * Decompress Huffman-compressed data
    */
   public decompress(compressedData: Uint8Array): DecompressionResult {
-    if (compressedData.length === 0) {
-      throw new Error("Cannot decompress empty data");
+    if (compressedData.length < 8) {
+      throw new Error("Invalid compressed data: too short");
     }
 
     let offset = 0;
+    
+    // Check header marker
+    if (compressedData[offset] !== 0x48 || compressedData[offset + 1] !== 0x46) {
+      throw new Error("Invalid compressed data: missing header marker");
+    }
+    offset += 2;
     
     // Read original file size (4 bytes)
     const originalSize = (compressedData[offset] << 24) | 
@@ -334,8 +338,9 @@ export class HuffmanCompressor {
                         compressedData[offset + 3];
     offset += 4;
     
-    // Read number of unique characters
-    const uniqueCharCount = compressedData[offset++];
+    // Read number of unique characters (2 bytes)
+    const uniqueCharCount = (compressedData[offset] << 8) | compressedData[offset + 1];
+    offset += 2;
     
     // Rebuild Huffman tree
     const root: HuffmanNode = { freq: 0 };
@@ -344,10 +349,9 @@ export class HuffmanCompressor {
       const character = compressedData[offset++];
       const codeLength = compressedData[offset++];
       
-      // Read packed code bits
+      // Read code bits
       const codeBytes = Math.ceil(codeLength / 8);
       let code = "";
-      let bitPos = 0;
       
       for (let byteIdx = 0; byteIdx < codeBytes; byteIdx++) {
         const codeByte = compressedData[offset++];
@@ -382,28 +386,32 @@ export class HuffmanCompressor {
     const compressedPayload = compressedData.slice(offset);
     
     let current = root;
-    let bitCount = 0;
+    let bitsProcessed = 0;
+    const totalBits = compressedPayload.length * 8 - padding;
     
-    for (let i = 0; i < compressedPayload.length; i++) {
+    for (let i = 0; i < compressedPayload.length && bitsProcessed < totalBits; i++) {
       const byte = compressedPayload[i];
       
-      for (let bit = 7; bit >= 0; bit--) {
-        // Skip padding bits in last byte
-        if (i === compressedPayload.length - 1 && bitCount >= (8 - padding)) {
-          break;
-        }
-        
+      for (let bit = 7; bit >= 0 && bitsProcessed < totalBits; bit--) {
         const bitValue = (byte >> bit) & 1;
         current = bitValue === 0 ? current.l! : current.r!;
         
         if (current.character !== undefined) {
           decompressed.push(current.character);
           current = root;
+          
+          // Stop when we've decompressed the expected amount
+          if (decompressed.length >= originalSize) {
+            break;
+          }
         }
         
-        bitCount++;
+        bitsProcessed++;
       }
-      bitCount = 0;
+      
+      if (decompressed.length >= originalSize) {
+        break;
+      }
     }
     
     return {

@@ -278,6 +278,9 @@ export class HuffmanCompressor {
     let currentByte = 0;
     let byteIndex = 0;
     
+    console.log("Compressing", data.length, "bytes into", compressedBytes, "bytes");
+    console.log("Total bits needed:", totalBits, "Padding:", padding);
+    
     for (let i = 0; i < data.length; i++) {
       const code = this.huffmanCodes.get(data[i])!;
       
@@ -319,6 +322,8 @@ export class HuffmanCompressor {
    * Decompress Huffman-compressed data
    */
   public decompress(compressedData: Uint8Array): DecompressionResult {
+    console.log("Decompressing data of length:", compressedData.length);
+    
     if (compressedData.length < 8) {
       throw new Error("Invalid compressed data: too short");
     }
@@ -327,9 +332,11 @@ export class HuffmanCompressor {
     
     // Check header marker
     if (compressedData[offset] !== 0x48 || compressedData[offset + 1] !== 0x46) {
+      console.error("Header marker not found. First bytes:", compressedData.slice(0, 10));
       throw new Error("Invalid compressed data: missing header marker");
     }
     offset += 2;
+    console.log("Header marker found");
     
     // Read original file size (4 bytes)
     const originalSize = (compressedData[offset] << 24) | 
@@ -337,10 +344,12 @@ export class HuffmanCompressor {
                         (compressedData[offset + 2] << 8) | 
                         compressedData[offset + 3];
     offset += 4;
+    console.log("Original size:", originalSize);
     
     // Read number of unique characters (2 bytes)
     const uniqueCharCount = (compressedData[offset] << 8) | compressedData[offset + 1];
     offset += 2;
+    console.log("Unique character count:", uniqueCharCount);
     
     // Rebuild Huffman tree
     const root: HuffmanNode = { freq: 0 };
@@ -413,6 +422,9 @@ export class HuffmanCompressor {
         break;
       }
     }
+    
+    console.log("Decompressed length:", decompressed.length, "Expected:", originalSize);
+    console.log("First 10 decompressed bytes:", decompressed.slice(0, 10));
     
     return {
       decompressedData: new Uint8Array(decompressed),

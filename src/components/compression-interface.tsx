@@ -7,7 +7,7 @@ import { HuffmanVisualizer } from "@/components/huffman-visualizer";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { HuffmanCompressor, CompressionResult } from "@/lib/huffman";
-import { Download, Upload, FileArchive, RotateCcw } from "lucide-react";
+import { Download, Upload, FileArchive, RotateCcw, FileText } from "lucide-react";
 
 export function CompressionInterface() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -88,6 +88,25 @@ export function CompressionInterface() {
     });
   };
 
+  const handleDownloadReadable = () => {
+    if (!compressionResult || !selectedFile) return;
+    
+    const blob = new Blob([compressionResult.readableCompressed], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedFile.name}_readable.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Readable Version Downloaded",
+      description: "Your human-readable compressed file is being downloaded.",
+    });
+  };
+
   const handleReset = () => {
     setSelectedFile(null);
     setCompressionResult(null);
@@ -131,10 +150,17 @@ export function CompressionInterface() {
               </Button>
               
               {compressionResult && (
-                <Button onClick={handleDownload} variant="outline">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </Button>
+                <>
+                  <Button onClick={handleDownload} variant="outline">
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Binary
+                  </Button>
+                  
+                  <Button onClick={handleDownloadReadable} variant="outline">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download Readable
+                  </Button>
+                </>
               )}
               
               <Button onClick={handleReset} variant="outline" size="icon">

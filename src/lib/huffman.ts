@@ -38,6 +38,7 @@ export interface CompressionResult {
   compressionRatio: number;
   huffmanCodes: Map<number, string>;
   header: Uint8Array;
+  readableCompressed: string; // Human-readable compressed text
 }
 
 export interface DecompressionResult {
@@ -240,6 +241,56 @@ export class HuffmanCompressor {
   }
 
   /**
+   * Generate human-readable compressed text
+   */
+  private generateReadableCompressed(data: Uint8Array): string {
+    // Convert original text to string for readable output
+    const originalText = new TextDecoder('utf-8').decode(data);
+    
+    // Create a readable representation showing the compression mapping
+    let readable = "=== HUFFMAN COMPRESSED FILE ===\n\n";
+    readable += `Original Size: ${data.length} bytes\n`;
+    readable += `Compression Codes:\n`;
+    
+    // Show the character to code mapping
+    const sortedCodes = Array.from(this.huffmanCodes.entries())
+      .sort((a, b) => a[1].length - b[1].length);
+    
+    for (const [charCode, huffmanCode] of sortedCodes) {
+      const char = String.fromCharCode(charCode);
+      const displayChar = char === '\n' ? '\\n' : 
+                         char === '\r' ? '\\r' : 
+                         char === '\t' ? '\\t' : 
+                         char === ' ' ? 'SPACE' : 
+                         char.charCodeAt(0) < 32 || char.charCodeAt(0) > 126 ? `[${charCode}]` : char;
+      readable += `  "${displayChar}" -> ${huffmanCode}\n`;
+    }
+    
+    readable += "\n=== COMPRESSED TEXT ===\n";
+    
+    // Show original text with visible compression
+    let compressedView = "";
+    for (let i = 0; i < Math.min(data.length, 1000); i++) { // Limit to first 1000 chars
+      const code = this.huffmanCodes.get(data[i])!;
+      compressedView += code + " ";
+      if ((i + 1) % 10 === 0) compressedView += "\n";
+    }
+    
+    if (data.length > 1000) {
+      compressedView += "\n... (truncated for readability) ...";
+    }
+    
+    readable += compressedView;
+    readable += "\n\n=== ORIGINAL PREVIEW ===\n";
+    readable += originalText.substring(0, 500);
+    if (originalText.length > 500) {
+      readable += "\n... (truncated for readability) ...";
+    }
+    
+    return readable;
+  }
+
+  /**
    * Compress data using Huffman algorithm
    */
   public compress(data: Uint8Array): CompressionResult {
@@ -305,13 +356,17 @@ export class HuffmanCompressor {
     result.set(header, 0);
     result.set(compressed, header.length);
     
+    // Generate human-readable version
+    const readableCompressed = this.generateReadableCompressed(data);
+    
     return {
       compressedData: result,
       originalSize: data.length,
       compressedSize: result.length,
       compressionRatio: (1 - result.length / data.length) * 100,
       huffmanCodes: new Map(this.huffmanCodes),
-      header
+      header,
+      readableCompressed
     };
   }
 

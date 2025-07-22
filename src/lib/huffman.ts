@@ -278,9 +278,6 @@ export class HuffmanCompressor {
     let currentByte = 0;
     let byteIndex = 0;
     
-    console.log("Compressing", data.length, "bytes into", compressedBytes, "bytes");
-    console.log("Total bits needed:", totalBits, "Padding:", padding);
-    
     for (let i = 0; i < data.length; i++) {
       const code = this.huffmanCodes.get(data[i])!;
       
@@ -322,8 +319,6 @@ export class HuffmanCompressor {
    * Decompress Huffman-compressed data
    */
   public decompress(compressedData: Uint8Array): DecompressionResult {
-    console.log("Decompressing data of length:", compressedData.length);
-    
     if (compressedData.length < 8) {
       throw new Error("Invalid compressed data: too short");
     }
@@ -332,27 +327,23 @@ export class HuffmanCompressor {
     
     // Check header marker
     if (compressedData[offset] !== 0x48 || compressedData[offset + 1] !== 0x46) {
-      console.error("Header marker not found. First bytes:", compressedData.slice(0, 10));
       throw new Error("Invalid compressed data: missing header marker");
     }
     offset += 2;
-    console.log("Header marker found");
     
-    // Read original file size (4 bytes)
+    // Read original file size (4 bytes) - fix byte ordering
     const originalSize = (compressedData[offset] << 24) | 
                         (compressedData[offset + 1] << 16) | 
                         (compressedData[offset + 2] << 8) | 
                         compressedData[offset + 3];
     offset += 4;
-    console.log("Original size:", originalSize);
     
     // Read number of unique characters (2 bytes)
     const uniqueCharCount = (compressedData[offset] << 8) | compressedData[offset + 1];
     offset += 2;
-    console.log("Unique character count:", uniqueCharCount);
     
-    // Rebuild Huffman tree
-    const root: HuffmanNode = { freq: 0 };
+    // Rebuild Huffman tree from stored codes
+    const codeToChar = new Map<string, number>();
     
     for (let i = 0; i < uniqueCharCount; i++) {
       const character = compressedData[offset++];
@@ -369,32 +360,17 @@ export class HuffmanCompressor {
         }
       }
       
-      // Build tree path for this character
-      let current = root;
-      for (let j = 0; j < code.length; j++) {
-        if (code[j] === '0') {
-          if (!current.l) {
-            current.l = { freq: 0 };
-          }
-          current = current.l;
-        } else {
-          if (!current.r) {
-            current.r = { freq: 0 };
-          }
-          current = current.r;
-        }
-      }
-      current.character = character;
+      codeToChar.set(code, character);
     }
     
     // Read padding
     const padding = compressedData[offset++];
     
-    // Decompress data
+    // Decompress data using code lookup
     const decompressed: number[] = [];
     const compressedPayload = compressedData.slice(offset);
     
-    let current = root;
+    let currentCode = "";
     let bitsProcessed = 0;
     const totalBits = compressedPayload.length * 8 - padding;
     
@@ -403,11 +379,12 @@ export class HuffmanCompressor {
       
       for (let bit = 7; bit >= 0 && bitsProcessed < totalBits; bit--) {
         const bitValue = (byte >> bit) & 1;
-        current = bitValue === 0 ? current.l! : current.r!;
+        currentCode += bitValue.toString();
         
-        if (current.character !== undefined) {
-          decompressed.push(current.character);
-          current = root;
+        // Check if current code matches any character
+        if (codeToChar.has(currentCode)) {
+          decompressed.push(codeToChar.get(currentCode)!);
+          currentCode = "";
           
           // Stop when we've decompressed the expected amount
           if (decompressed.length >= originalSize) {
@@ -422,9 +399,6 @@ export class HuffmanCompressor {
         break;
       }
     }
-    
-    console.log("Decompressed length:", decompressed.length, "Expected:", originalSize);
-    console.log("First 10 decompressed bytes:", decompressed.slice(0, 10));
     
     return {
       decompressedData: new Uint8Array(decompressed),
